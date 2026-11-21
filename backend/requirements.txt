@@ -1,0 +1,8 @@
+# Pinned to the versions this app is tested with
+Flask==3.1.3
+Flask-Cors==6.0.5
+Werkzeug==3.1.9
+PyMySQL==1.2.3
+psycopg2-binary>=2.9.10,<2.10
+cryptography==50.0.2  # PyMySQL needs it to log in to MySQL 8 users with caching_sha2_password
+waitress==3.0.2       # the server the packaged app runs on
