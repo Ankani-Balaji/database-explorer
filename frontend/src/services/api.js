@@ -2,9 +2,9 @@ import axios from "axios";
 
 // Dev server (npm run dev) talks to Flask on port 5000; the built app is served by the backend
 // itself, so it uses the same address it was loaded from.
-const http = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || (import.meta.env.DEV ? "http://localhost:5000/api" : "/api"),
-});
+export const API_BASE =
+  import.meta.env.VITE_API_URL || (import.meta.env.DEV ? "http://localhost:5000/api" : "/api");
+const http = axios.create({ baseURL: API_BASE });
 
 const KEY = "ifm_conn_id";
 export const getConnId = () => localStorage.getItem(KEY);

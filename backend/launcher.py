@@ -1,27 +1,51 @@
 """Entry point of the packaged app (DatabaseExplorer.exe).
 
-Starts the server on this computer only (127.0.0.1) and opens the browser. If the app is
-already running, it just opens another browser tab instead of starting a second copy.
+Runs without a console window: starts the server on this computer only (127.0.0.1), opens the
+app in its own window (Microsoft Edge app mode, or the default browser as a fallback), and exits
+by itself once that window is closed (see lifecycle.py). Starting it again while it's running
+just opens another window.
+
+Log file: %LOCALAPPDATA%\\DatabaseExplorer\\logs\\app.log
 """
 import json
 import logging
+import logging.handlers
 import os
+import shutil
 import socket
+import subprocess
 import sys
-import threading
 import urllib.request
 import webbrowser
+from pathlib import Path
 
 PORTS = range(52300, 52311)  # an uncommon range, to avoid clashing with other local servers
+TITLE = "Database Explorer"
+DATA_DIR = Path(os.environ.get("LOCALAPPDATA") or Path.home()) / "DatabaseExplorer"
+log = logging.getLogger("database-explorer")
 
 
-def set_title(title):
+def setup_logging():
+    (DATA_DIR / "logs").mkdir(parents=True, exist_ok=True)
+    handler = logging.handlers.RotatingFileHandler(
+        DATA_DIR / "logs" / "app.log", maxBytes=1_000_000, backupCount=2, encoding="utf-8")
+    handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s"))
+    root = logging.getLogger()
+    root.addHandler(handler)
+    root.setLevel(logging.INFO)
+    logging.getLogger("waitress").setLevel(logging.WARNING)
+
+
+def message_box(text, error=True):
+    """A normal Windows dialog (there's no console to print to)."""
     if sys.platform == "win32":
         try:
             import ctypes
-            ctypes.windll.kernel32.SetConsoleTitleW(title)
+            ctypes.windll.user32.MessageBoxW(None, text, TITLE, 0x10 if error else 0x40)
+            return
         except Exception:
             pass
+    sys.stderr and sys.stderr.write(text + "\n")
 
 
 def already_running(port, app_name):
@@ -41,45 +65,83 @@ def port_free(port):
             return False
 
 
+def find_edge():
+    if sys.platform != "win32":
+        return None
+    try:
+        import winreg
+        for hive in (winreg.HKEY_CURRENT_USER, winreg.HKEY_LOCAL_MACHINE):
+            try:
+                with winreg.OpenKey(hive, r"SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\msedge.exe") as k:
+                    path = winreg.QueryValue(k, None)
+                    if path and Path(path).is_file():
+                        return path
+            except OSError:
+                pass
+    except ImportError:
+        pass
+    for base in (os.environ.get("ProgramFiles(x86)"), os.environ.get("ProgramFiles")):
+        if base and (Path(base) / "Microsoft/Edge/Application/msedge.exe").is_file():
+            return str(Path(base) / "Microsoft/Edge/Application/msedge.exe")
+    return shutil.which("msedge")
+
+
+def open_window(url):
+    """Open the app in its own window without address bar or tabs; else a normal browser tab."""
+    if os.environ.get("DBX_NO_BROWSER"):  # set for automated tests
+        return
+    edge = find_edge()
+    if edge:
+        try:
+            # A separate Edge profile keeps the app window independent of the user's own browsing,
+            # and remembers its size and the app's saved settings
+            subprocess.Popen([edge, f"--app={url}", f"--user-data-dir={DATA_DIR / 'window'}",
+                              "--no-first-run", "--no-default-browser-check", "--window-size=1300,860"],
+                             close_fds=True)
+            return
+        except OSError:
+            log.exception("Couldn't start Edge; using the default browser")
+    webbrowser.open(url)
+
+
+def shutdown():
+    logging.shutdown()
+    os._exit(0)
+
+
 def main():
-    set_title("Database Explorer")
-    print("Starting Database Explorer...")
     from waitress import create_server
     from app import app, APP_NAME, VERSION
+    from lifecycle import Watchdog
 
-    for port in PORTS:
+    # Only ports something is listening on can hold a running copy. (Asking a free port is slow on
+    # Windows, which retries refused connections for about a second.)
+    free = [p for p in PORTS if port_free(p)]
+    for port in (p for p in PORTS if p not in free):
         if already_running(port, APP_NAME):
-            url = f"http://127.0.0.1:{port}/"
-            print(f"Database Explorer is already running: opening {url}")
-            if not os.environ.get("DBX_NO_BROWSER"):
-                webbrowser.open(url)
+            log.info("Already running on port %s: opening another window", port)
+            open_window(f"http://127.0.0.1:{port}/")
             return
-    port = next((p for p in PORTS if port_free(p)), None)
+    port = free[0] if free else None
     if port is None:
-        raise RuntimeError(f"No free port between {PORTS.start} and {PORTS.stop - 1}.")
+        raise RuntimeError(f"All ports from {PORTS.start} to {PORTS.stop - 1} are in use by other programs.")
 
-    logging.basicConfig(level=logging.WARNING, format="%(levelname)s: %(message)s")
     server = create_server(app, host="127.0.0.1", port=port, threads=8)
+    app.config["WATCHDOG"] = Watchdog(on_idle=shutdown).start()
     url = f"http://127.0.0.1:{port}/"
-    print()
-    print(f"  Database Explorer {VERSION} is running at {url}")
-    print("  Your browser should open by itself. If it doesn't, open that address.")
-    print("  Only this computer can use it.")
-    print()
-    print("  Keep this window open while you use the app. Close it to stop.")
-    print()
-    if not os.environ.get("DBX_NO_BROWSER"):  # set for automated tests
-        threading.Timer(1.0, webbrowser.open, [url]).start()
+    log.info("Database Explorer %s running at %s", VERSION, url)
+    open_window(url)
     server.run()
 
 
 if __name__ == "__main__":
+    setup_logging()
     try:
         main()
     except KeyboardInterrupt:
         pass
     except Exception as e:
-        print(f"\nDatabase Explorer could not start: {e}")
-        if getattr(sys, "frozen", False):
-            input("Press Enter to close this window.")
+        log.exception("Startup failed")
+        message_box(f"Database Explorer could not start:\n\n{e}\n\n"
+                    f"Details are in {DATA_DIR / 'logs' / 'app.log'}")
         sys.exit(1)

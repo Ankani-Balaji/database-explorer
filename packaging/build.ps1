@@ -1,4 +1,5 @@
-# Builds release\DatabaseExplorer.exe from scratch.
+# Builds release\DatabaseExplorer-Setup-<version>.exe (the installer friends download) from scratch.
+# Needs Inno Setup 6:  winget install JRSoftware.InnoSetup --scope user
 #   powershell -ExecutionPolicy Bypass -File packaging\build.ps1
 $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSScriptRoot
@@ -30,16 +31,26 @@ try {
   if ($LASTEXITCODE) { throw "npm run build failed" }
 } finally { Pop-Location }
 
-Write-Host "4/4 Packaging DatabaseExplorer.exe..."
+Write-Host "4/5 Packaging the app (release\DatabaseExplorer\)..."
+$old = Join-Path $root "release\DatabaseExplorer.exe"  # single-file build of version 1.0.0
+if (Test-Path $old) { Remove-Item $old }
 & $py -m PyInstaller --noconfirm --clean `
   --distpath (Join-Path $root "release") `
   --workpath (Join-Path $root "packaging\build") `
   (Join-Path $root "packaging\DatabaseExplorer.spec")
 if ($LASTEXITCODE) { throw "PyInstaller failed" }
 
-$exe = Join-Path $root "release\DatabaseExplorer.exe"
-$size = [math]::Round((Get-Item $exe).Length / 1MB, 1)
-$hash = (Get-FileHash $exe -Algorithm SHA256).Hash
+Write-Host "5/5 Building the installer..."
+$version = (Select-String -Path (Join-Path $root "backend\app.py") -Pattern '^VERSION = "(.+)"').Matches[0].Groups[1].Value
+$iscc = @("$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe", "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe",
+          "$env:ProgramFiles\Inno Setup 6\ISCC.exe") | Where-Object { Test-Path $_ } | Select-Object -First 1
+if (-not $iscc) { throw "Inno Setup 6 not found. Install it with: winget install JRSoftware.InnoSetup --scope user" }
+& $iscc /Q "/DAppVersion=$version" (Join-Path $root "packaging\installer.iss")
+if ($LASTEXITCODE) { throw "Inno Setup failed" }
+
+$setup = Join-Path $root "release\DatabaseExplorer-Setup-$version.exe"
+$size = [math]::Round((Get-Item $setup).Length / 1MB, 1)
+$hash = (Get-FileHash $setup -Algorithm SHA256).Hash
 Write-Host ""
-Write-Host "Done: $exe ($size MB)"
+Write-Host "Done: $setup ($size MB)"
 Write-Host "SHA-256: $hash"

@@ -1,13 +1,23 @@
-## Database Explorer 1.0.0
+## Database Explorer 1.1.0
 
-Browse the PostgreSQL and MySQL databases on your own computer, read-only.
+Browse the PostgreSQL and MySQL databases on your own computer, read-only. Works offline.
 
-**How to use**
-1. Download `DatabaseExplorer.exe` below.
-2. Double-click it. Your browser opens the app.
-   Windows may show "Windows protected your PC" (the app isn't signed): click **More info → Run anyway**.
-3. Log in to your database server (usually `localhost`) and pick a database.
-4. Close the small black window to stop the app.
+**Install**
+1. Download `DatabaseExplorer-Setup-1.1.0.exe` below.
+2. Open it. Windows may show "Windows protected your PC" (the app isn't signed): click **More info → Run anyway**.
+3. Click **Next → Install**. No administrator rights needed.
+4. Open **Database Explorer** from the icon on your desktop (or the Start menu).
+
+**Use**
+- The app opens in its own window. Log in to your database server (usually `localhost`) and pick a database.
+- Close the window when you're done: the app stops by itself.
+- To remove it: Windows **Settings → Apps → Installed apps → Database Explorer → Uninstall**.
+
+**New in 1.1.0**
+- Proper installer with a desktop icon, Start menu entry and uninstaller
+- Opens in its own app window, with no extra black window
+- Stops automatically when you close the window
+- Starts in about a second
 
 **What it can do**
 - See all tables and views, with row counts and sizes
@@ -21,4 +31,4 @@ Browse the PostgreSQL and MySQL databases on your own computer, read-only.
 It only works on your own computer and never changes your data.
 
 Windows 10/11, 64-bit.
-SHA-256 of `DatabaseExplorer.exe`: `8A44C6595ED577FE1EC69B84B602F42D9704AB0558F04D8C3B0AD038D7E35EB1`
+SHA-256 of `DatabaseExplorer-Setup-1.1.0.exe`: `D5974E93215E38EA149D6420B0E3814F5B6DC7322735A876AAFE6D571BDC181D`
